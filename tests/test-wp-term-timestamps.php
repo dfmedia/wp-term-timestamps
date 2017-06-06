@@ -6,10 +6,14 @@
  */
 
 /**
- * Sample test case.
+ * WP_Term_Timestamp_Tests.
  */
 class WP_Term_Timestamp_Tests extends WP_UnitTestCase {
 
+	/**
+	 * The admin user that is used to test creating and updating terms
+	 * @var
+	 */
 	public $admin;
 
 	/**
@@ -143,7 +147,7 @@ class WP_Term_Timestamp_Tests extends WP_UnitTestCase {
 		/**
 		 * Only run these tests if WPGraphQL is installed in the same environment where these tests are being run
 		 */
-		if ( function_exists( 'do_graphql_request' ) ) {
+		if ( function_exists( 'do_graphql_request' ) && defined( 'WPGRAPHQL_VERSION' ) && version_compare( WPGRAPHQL_VERSION, '0.0.12' ) >= 0  ) {
 
 			/**
 			 * Set the current user to someone with permission to create terms
@@ -222,6 +226,13 @@ class WP_Term_Timestamp_Tests extends WP_UnitTestCase {
 			 * Ensure the processed GraphQL request matches our expectation
 			 */
 			$this->assertEquals( $actual, $expected );
+
+		} else {
+
+			/**
+			 * Output the message to PHPUnit
+			 */
+			fwrite(STDERR, print_r( 'WPGraphQL is either not installed or the version is not compatible with this plugin', TRUE ) );
 
 		}
 

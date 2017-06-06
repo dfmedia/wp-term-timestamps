@@ -121,6 +121,13 @@ class WP_Term_Timestamps {
 	public function graphql_support() {
 
 		/**
+		 * This plugin requires version 0.0.12 or higher of the WPGraphQL Plugin
+		 */
+		if ( defined( 'WPGRAPHQL_VERSION' ) && version_compare( WPGRAPHQL_VERSION, '0.0.12' ) >= 0 ) {
+			return;
+		}
+
+		/**
 		 * Get the allowed WPGraphQL taxonomies
 		 */
 		$allowed_taxonomies = \WPGraphQL::get_allowed_taxonomies();

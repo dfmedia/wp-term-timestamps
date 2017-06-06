@@ -19,7 +19,7 @@ Whenever a term is updated, the following data will be stored in the term's term
 
 ### WPGraphQL Support
 
-This plugin provides support for WPGraphQL (https://github.com/wp-graphql/wp-graphql)
+This plugin provides support for WPGraphQL version 0.0.12 and newer (https://github.com/wp-graphql/wp-graphql).
 
 When querying terms, the termObjects now have a `created` and `modified` field. 
 
