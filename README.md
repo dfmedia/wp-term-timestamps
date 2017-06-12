@@ -8,14 +8,25 @@ Whenever a term is created the following data will be stored in the term's term_
 
 Terms that were created before this plugin was activated will, of course, not have this meta stored.
 
-* **meta_key:** `created`
-* **meta_value:** array which includes timestamp and the user ID for the user who created the term
+* **meta_key:** `created_by`
+* **meta_value:** User ID for who created the term
+
+* **meta_key:** `created_timestamp`
+* **meta_value:** Timestamp for when the term was created
 
 ### Term Updates
 Whenever a term is updated, the following data will be stored in the term's term_meta:
 
-* **meta_key:** `modified`
-* **meta_value:** array which includes timestamp and the user ID for the user who modified the term
+* **meta_key:** `last_modified_timestamp`
+* **meta_value:** Timestamp for when the term was most recently modified
+
+
+* **meta_key:** `last_modified_by`
+* **meta_value:** User ID for who most recently modified the term.
+
+
+* **meta_key:** `modifications`
+* **meta_value:** Array which includes timestamp and the user ID for the user who modified the term
 
 ### WPGraphQL Support
 
@@ -45,10 +56,21 @@ query {
                 username
             }
         }
+        modifications {
+            time
+            user {
+                id
+                username
+            }
+        }
     }
 }
 ```
 
 ### Unit Tests
 This plugin has Unit Tests. To run the tests, in the command line navigate to the plugin directory and run `phpunit`
+
+You may first need to install the unit tests like so: 
+
+`bin/install-wp-tests.sh <db-name> <db-user> <db-pass> [db-host] [wp-version] [skip-database-creation]`
 
