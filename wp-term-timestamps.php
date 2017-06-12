@@ -5,9 +5,9 @@
  * Description:     This is a simple plugin that records timestamps when terms are created or modified, and the ID of
  * the user who made the modification. Author:          Digital First Media, Jason Bahl Author URI:
  * https://github.com/dfmedia/wp-term-timestamps Text Domain:     wp-term-timestamps Domain Path:     /languages
- * Version:         0.1.1
+ * Version:         0.1.2
  *
- * @package         Wp_Term_Timestamps
+ * @package         WP_Term_Timestamps
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -19,23 +19,44 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 	class WP_Term_Timestamps {
 
 		/**
-		 * Holds the value of the meta_key that should be used to store the created timestamp info
+		 * Holds the value of the meta_key that should be used to store the ID of the user that created the term
 		 *
 		 * @var string
 		 */
-		public $created_meta_key = 'created';
+		public $created_by_meta_key = 'created_by';
 
 		/**
-		 * Holds the value of the meta_key that should be used to store the modified timestamp info
+		 * Holds the value of the meta_key that should be used to store the created timestamp
 		 *
 		 * @var string
 		 */
-		public $modified_meta_key = 'modified';
+		public $created_timestamp_meta_key = 'created_timestamp';
 
 		/**
-		 * Define the termUpdatedType
+		 * Holds the value of the meta_key that should be used to store the modifications history
 		 *
-		 * @var
+		 * @var string
+		 */
+		public $modifications_meta_key = 'modifications';
+
+		/**
+		 * Holds the value of the meta_key that should be used to store the last modified history
+		 *
+		 * @var string
+		 */
+		public $last_modified_timestamp_meta_key = 'last_modified_timestamp';
+
+		/**
+		 * Holds the value of the meta_key that should be used to store the last modified user ID
+		 *
+		 * @var string
+		 */
+		public $last_modified_by_meta_key = 'last_modified_by';
+
+		/**
+		 * Define the WPGraphQL type to return when querying term updates
+		 *
+		 * @var mixed|\WPGraphQL\Type\WPObjectType|null
 		 */
 		public static $term_updated_type;
 
@@ -45,29 +66,28 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 		public function setup() {
 
 			/**
-			 * Filter the meta_key created timestamp data should be saved to
-			 *
-			 * @param string $meta_key The meta_key to store modified timestamp info to
+			 * Define the plugin version
 			 */
-			$this->created_meta_key = apply_filters( 'wp_term_timestamps_created_meta_key', 'created' );
+			define( 'WP_TERM_TIMESTAMPS_VERSION', '0.1.2' );
 
 			/**
-			 * Filter the meta_key modified timestamp data should be saved to
-			 *
-			 * @param string $meta_key The meta_key to store modified timestamp info to
+			 * Apply filters to class vars
 			 */
-			$this->modified_meta_key = apply_filters( 'wp_term_timestamps_modified_meta_key', 'modified' );
+			$this->apply_filters();
 
 			/**
 			 * Listen for terms to be created/updated and store term_meta
 			 */
 			add_action( 'create_term', [ $this, 'add_term_created_timestamp' ], 10, 3 );
-			add_action( 'edit_terms', [ $this, 'add_term_modified_timestamp' ], 10, 2 );
+			add_action( 'edit_terms', [ $this, 'add_term_modified_meta' ], 10, 2 );
 
 			/**
 			 * Add created/modified columns to the Term Edit screens
 			 */
-			$taxonomies = get_taxonomies();
+			$taxonomies = get_taxonomies([
+				'show_ui' => true,
+			]);
+
 			if ( ! empty( $taxonomies ) && is_array( $taxonomies ) ) {
 				foreach ( $taxonomies as $taxonomy ) {
 					add_filter( "manage_edit-{$taxonomy}_columns", [ $this, 'add_timestamps_to_term_columns' ] );
@@ -82,6 +102,48 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 		}
 
 		/**
+		 * Applies filters to the class vars
+		 */
+		public function apply_filters() {
+
+			/**
+			 * Filter the meta_key the created_by user ID should be stored in
+			 *
+			 * @param string $meta_key The meta_key to store the user ID of the user that created the term
+			 */
+			$this->created_by_meta_key = apply_filters( 'wp_term_timestamps_created_by_meta_key', $this->created_by_meta_key );
+
+			/**
+			 * Filter the meta_key the created_timestamp should be saved to
+			 *
+			 * @param string $meta_key The meta_key to store the created_timestamp
+			 */
+			$this->created_timestamp_meta_key = apply_filters( 'wp_term_timestamps_created_timestamp_key', $this->created_timestamp_meta_key );
+
+			/**
+			 * Filter the meta_key for where term modifications should be stored
+			 *
+			 * @param string $meta_key The meta_key to store modifications history to
+			 */
+			$this->modifications_meta_key = apply_filters( 'wp_term_modifications_meta_key', $this->modifications_meta_key );
+
+			/**
+			 * Filter the meta_key for where the last_modified_timestamp should be stored
+			 *
+			 * @param string $meta_key The meta_key to store the timestamp of when the term was last modified
+			 */
+			$this->last_modified_timestamp_meta_key = apply_filters( 'wp_term_timestamps_last_modified_timestamp_meta_key', $this->last_modified_timestamp_meta_key );
+
+			/**
+			 * Filter the meta_key for where the User ID of who modified the term most recently should be stored
+			 *
+			 * @param string $meta_key The meta_key to store User ID of the user who most recently modified the term
+			 */
+			$this->last_modified_by_meta_key = apply_filters( 'wp_term_timestamps_created_meta_key', $this->last_modified_by_meta_key );
+
+		}
+
+		/**
 		 * Adds a timestamp to a term's term_meta when a term is created
 		 *
 		 * @param int    $term_id  Term ID.
@@ -91,20 +153,24 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 		public function add_term_created_timestamp( $term_id, $tt_id, $taxonomy ) {
 
 			/**
-			 * Save the term_meta to the specified mete_key as a unique value
+			 * Store the created_by and created_timestamp term meta for the term being created
 			 */
-			add_term_meta( $term_id, $this->created_meta_key, $this->prepare_meta_value( $term_id, $taxonomy ), true );
+			update_term_meta( $term_id, $this->created_by_meta_key, get_current_user_id(), true );
+			update_term_meta( $term_id, $this->created_timestamp_meta_key, current_time( 'mysql' ), true );
+
 		}
 
 		/**
 		 * Adds a timestamp to a term's term_meta when a term is edited
 		 */
-		public function add_term_modified_timestamp( $term_id, $taxonomy ) {
+		public function add_term_modified_meta( $term_id, $taxonomy ) {
 
 			/**
 			 * Save the term_meta to the specified mete_key as a non-unique value (allowing every modification to be saved)
 			 */
-			add_term_meta( $term_id, $this->modified_meta_key, $this->prepare_meta_value( $term_id, $taxonomy ), false );
+			update_term_meta( $term_id, $this->last_modified_by_meta_key, get_current_user_id(), true );
+			update_term_meta( $term_id, $this->last_modified_timestamp_meta_key, current_time( 'mysql' ), true );
+			add_term_meta( $term_id, $this->modifications_meta_key, $this->prepare_meta_value( $term_id, $taxonomy ), false );
 		}
 
 		/**
@@ -115,12 +181,10 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 		 * @return mixed
 		 */
 		public function add_timestamps_to_term_columns( $columns ) {
-
-			$columns['created']  = __( 'Created', 'wp-term-timestamps' );
-			$columns['modified'] = __( 'Modified', 'wp-term-timestamps' );
+			$columns['created']       = __( 'Created', 'wp-term-timestamps' );
+			$columns['last_modified'] = __( 'Last Modified', 'wp-term-timestamps' );
 
 			return $columns;
-
 		}
 
 		/**
@@ -136,14 +200,13 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 
 			switch ( $column_name ) {
 				case 'created':
-					$created_time = get_term_meta( $term_id, $this->created_meta_key, true );
+					$created_time = get_term_meta( $term_id, $this->created_timestamp_meta_key, true );
 
-					return ! empty( $created_time['timestamp'] ) && false !== strtotime( $created_time['timestamp'] ) ? date( 'D M j,Y H:i:s', strtotime( $created_time['timestamp'] ) ) : '';
-				case 'modified':
-					$modified_time = get_term_meta( $term_id, $this->modified_meta_key, false );
-					$modified_time = ! empty( $modified_time ) && is_array( $modified_time ) ? array_reverse( $modified_time ) : null;
+					return ! empty( $created_time ) && false !== strtotime( $created_time ) ? date( 'D M j,Y H:i:s', strtotime( $created_time ) ) : '';
+				case 'last_modified':
+					$modified_time = get_term_meta( $term_id, $this->last_modified_timestamp_meta_key, true );
 
-					return ! empty( $modified_time[0]['timestamp'] ) && false !== strtotime( $modified_time[0]['timestamp'] ) ? date( 'D M j,Y H:i:s', strtotime( $modified_time[0]['timestamp'] ) ) : '';
+					return ! empty( $modified_time ) && false !== strtotime( $modified_time ) ? date( 'D M j,Y H:i:s', strtotime( $modified_time ) ) : '';
 				default:
 					return $content;
 			}
@@ -151,7 +214,7 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 		}
 
 		/**
-		 * This prepares the meta that will be saved in the term_meta whenever a term is updated or created
+		 * This prepares the meta that will be saved in the term_meta whenever a term is updated
 		 *
 		 * @param int    $term_id  The ID of the term being updated or created
 		 * @param string $taxonomy The name of the taxonomy the term being edited or created belongs to
@@ -186,7 +249,7 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 			/**
 			 * This plugin requires version 0.0.12 or higher of the WPGraphQL Plugin
 			 */
-			if ( defined( 'WPGRAPHQL_VERSION' ) && version_compare( WPGRAPHQL_VERSION, '0.0.12' ) >= 0 ) {
+			if ( defined( 'WPGRAPHQL_VERSION' ) && version_compare( WPGRAPHQL_VERSION, '0.0.12' ) < 0 ) {
 				return;
 			}
 
@@ -229,12 +292,28 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 			 * Add the "created" (or filtered name) field to the Schema for the TermObjectType
 			 */
 			$fields[ $created_graphql_field ] = [
-				'type'        => self::term_updated_type(),
+				'type'        => $this->term_updated_type(),
 				'description' => __( 'Details on when the term was created', 'wp-term-timestamps' ),
 				'resolve'     => function( \WP_Term $term, array $args, $context, $info ) {
-					$created_meta = get_term_meta( $term->term_id, $this->created_meta_key, true );
 
-					return ! empty( $created_meta ) ? $created_meta : null;
+					/**
+					 * Create an array of meta to return
+					 */
+					$meta = [];
+
+					/**
+					 * Get the created term_meta
+					 */
+					$created_time       = get_term_meta( $term->term_id, $this->created_timestamp_meta_key, true );
+					$created_by_user_id = get_term_meta( $term->term_id, $this->created_by_meta_key, true );
+
+					/**
+					 * Add the meta values to the array to return
+					 */
+					$meta['timestamp'] = ( ! empty( $created_time ) && false !== strtotime( $created_time ) ) ? date( 'D M j,Y H:i:s', strtotime( $created_time ) ) : null;
+					$meta['user_id']   = ( ! empty( $created_by_user_id ) && absint( $created_by_user_id ) ) ? $created_by_user_id : null;
+
+					return $meta;
 				},
 			];
 
@@ -242,18 +321,45 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 			 * This allows the key of the created field to be filtered to avoid conflicts with potential existing
 			 * GraphQL fields that already use the "modified" key
 			 */
-			$modified_graphql_field = apply_filters( 'wp_term_timestamps_graphql_modified_field_key', 'modified' );
+			$modifications_graphql_field = apply_filters( 'wp_term_timestamps_graphql_modifications_field_key', 'modifications' );
 
 			/**
 			 * Add the "modified" (or filtered name) field to the Schema for the TermObjectType
 			 */
-			$fields[ $modified_graphql_field ] = [
-				'type'        => \WPGraphQL\Types::list_of( self::term_updated_type() ),
-				'description' => __( 'Details on when the term was created', 'wp-term-timestamps' ),
+			$fields[ $modifications_graphql_field ] = [
+				'type'        => \WPGraphQL\Types::list_of( $this->term_updated_type() ),
+				'description' => __( 'Details on Term modification history', 'wp-term-timestamps' ),
 				'resolve'     => function( \WP_Term $term, array $args, $context, $info ) {
-					$created_meta = get_term_meta( $term->term_id, $this->modified_meta_key, false );
+					$created_meta = get_term_meta( $term->term_id, $this->modifications_meta_key, false );
 
 					return ! empty( $created_meta ) && is_array( $created_meta ) ? array_reverse( $created_meta ) : null;
+				},
+			];
+
+			$last_modified_graphql_field = apply_filters( 'wp_term_timestamps_graphql_modifications_field_key', 'lastModified' );
+
+			$fields[ $last_modified_graphql_field ] = [
+				'type' => $this->term_updated_type(),
+				'description' => __( 'Details on the last modified time and user', 'wp-term-timestamps' ),
+				'resolve' => function( \WP_Term $term, array $args, $context, $info ) {
+					/**
+					 * Create an array of meta to return
+					 */
+					$meta = [];
+
+					/**
+					 * Get the created term_meta
+					 */
+					$last_modified_time       = get_term_meta( $term->term_id, $this->last_modified_timestamp_meta_key, true );
+					$last_modified_by_user_id = get_term_meta( $term->term_id, $this->last_modified_by_meta_key, true );
+
+					/**
+					 * Add the meta values to the array to return
+					 */
+					$meta['timestamp'] = ( ! empty( $last_modified_time ) && false !== strtotime( $last_modified_time ) ) ? date( 'D M j,Y H:i:s', strtotime( $last_modified_time ) ) : null;
+					$meta['user_id']   = ( ! empty( $last_modified_by_user_id ) && absint( $last_modified_by_user_id ) ) ? $last_modified_by_user_id : null;
+
+					return $meta;
 				},
 			];
 
@@ -263,7 +369,7 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 		/**
 		 * @return null|\WPGraphQL\Type\WPObjectType
 		 */
-		public static function term_updated_type() {
+		public function term_updated_type() {
 
 			if ( null === self::$term_updated_type ) {
 
