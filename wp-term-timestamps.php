@@ -3,9 +3,13 @@
  * Plugin Name:     WP Term Timestamps
  * Plugin URI:      https://github.com/dfmedia/wp-term-timestamps
  * Description:     This is a simple plugin that records timestamps when terms are created or modified, and the ID of
- * the user who made the modification. Author:          Digital First Media, Jason Bahl Author URI:
- * https://github.com/dfmedia/wp-term-timestamps Text Domain:     wp-term-timestamps Domain Path:     /languages
- * Version:         0.1.2
+ *                  the user who made the modification.
+ * Author:          Digital First Media, Jason Bahl
+ * Author URI:
+ * https://github.com/dfmedia/wp-term-timestamps
+ * Text Domain:     wp-term-timestamps
+ * Domain Path:     /languages
+ * Version:         0.1.3
  *
  * @package         WP_Term_Timestamps
  */
@@ -82,18 +86,10 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 			add_action( 'edit_terms', [ $this, 'add_term_modified_meta' ], 10, 2 );
 
 			/**
-			 * Add created/modified columns to the Term Edit screens
+			 * Setup the Admin UI
+			 * Hook in late to ensure taxonomies have been registered already
 			 */
-			$taxonomies = get_taxonomies([
-				'show_ui' => true,
-			]);
-
-			if ( ! empty( $taxonomies ) && is_array( $taxonomies ) ) {
-				foreach ( $taxonomies as $taxonomy ) {
-					add_filter( "manage_edit-{$taxonomy}_columns", [ $this, 'add_timestamps_to_term_columns' ] );
-					add_filter( "manage_{$taxonomy}_custom_column", [ $this, 'term_column_output' ], 10, 3 );
-				}
-			}
+			add_action( 'admin_init', [ $this, 'setup_admin_ui' ], 100 );
 
 			/**
 			 * Setup support for WPGraphQL
@@ -162,6 +158,9 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 
 		/**
 		 * Adds a timestamp to a term's term_meta when a term is edited
+		 *
+		 * @param int    $term_id  The ID of the term being modified
+		 * @param string $taxonomy The name of the taxonomy for the term being modified
 		 */
 		public function add_term_modified_meta( $term_id, $taxonomy ) {
 
@@ -171,6 +170,27 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 			update_term_meta( $term_id, $this->last_modified_by_meta_key, get_current_user_id(), true );
 			update_term_meta( $term_id, $this->last_modified_timestamp_meta_key, current_time( 'mysql' ), true );
 			add_term_meta( $term_id, $this->modifications_meta_key, $this->prepare_meta_value( $term_id, $taxonomy ), false );
+		}
+
+		/**
+		 * Sets up the Admin UI elements to render the timestamp data on the taxonomy admin screens
+		 */
+		public function setup_admin_ui() {
+
+			/**
+			 * Add created/modified columns to the Term Edit screens
+			 */
+			$taxonomies = get_taxonomies( [
+				'show_ui' => true,
+			] );
+
+			if ( ! empty( $taxonomies ) && is_array( $taxonomies ) ) {
+				foreach ( $taxonomies as $taxonomy ) {
+					add_filter( "manage_edit-{$taxonomy}_columns", [ $this, 'add_timestamps_to_term_columns' ] );
+					add_filter( "manage_{$taxonomy}_custom_column", [ $this, 'term_column_output' ], 10, 3 );
+				}
+			}
+
 		}
 
 		/**
@@ -339,9 +359,9 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 			$last_modified_graphql_field = apply_filters( 'wp_term_timestamps_graphql_modifications_field_key', 'lastModified' );
 
 			$fields[ $last_modified_graphql_field ] = [
-				'type' => $this->term_updated_type(),
+				'type'        => $this->term_updated_type(),
 				'description' => __( 'Details on the last modified time and user', 'wp-term-timestamps' ),
-				'resolve' => function( \WP_Term $term, array $args, $context, $info ) {
+				'resolve'     => function( \WP_Term $term, array $args, $context, $info ) {
 					/**
 					 * Create an array of meta to return
 					 */
