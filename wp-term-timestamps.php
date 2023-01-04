@@ -188,6 +188,7 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 				foreach ( $taxonomies as $taxonomy ) {
 					add_filter( "manage_edit-{$taxonomy}_columns", [ $this, 'add_timestamps_to_term_columns' ] );
 					add_filter( "manage_{$taxonomy}_custom_column", [ $this, 'term_column_output' ], 10, 3 );
+					add_filter( "manage_edit-{$taxonomy}_sortable_columns", [ $this, 'add_timestamps_to_term_columns_sortable' ] );
 				}
 			}
 
@@ -231,6 +232,20 @@ if ( ! class_exists( 'WP_Term_Timestamps' ) ) :
 					return $content;
 			}
 
+		}
+
+		/**
+		 * Add created and modified columns sortable to the term edit screens
+		 *
+		 * @param array $columns The columns registered to the term edit screen
+		 *
+		 * @return mixed
+		 */
+		public function add_timestamps_to_term_columns_sortable( $columns ) {
+			$columns['created']       = 'created';
+			$columns['last_modified'] = 'last_modified';
+
+			return $columns;
 		}
 
 		/**
